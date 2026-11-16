@@ -13,6 +13,8 @@ Latest chain, 2026-11-16 08:42 to 08:46 UTC, with the replay fix. Every step pas
 
 This chain ran before the 2026-11-25 reset. Its ledger state will be wiped by that reset.
 
+Run the full chain with one command: `npm run share-issuer:chain`. It runs Phases 0 to 4 in order, then a read-only ledger check (`npm run share-issuer:verify` runs that check alone on given run folders). It stops at the first failed step.
+
 ## Goal
 
 A property owner issues fractional shares as an MPT on XRPL.
