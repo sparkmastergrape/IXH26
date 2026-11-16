@@ -2,7 +2,7 @@
 
 Status: Phases 0 to 4 run on testnet. Run folders are in runs/.
 
-Latest chain, 2026-11-16 08:42 to 08:46 UTC, with the replay fix. Every step passes. Issuance `01554A56C7DD9B55C78A1B64A200DBFFE9413E5D46EEFB67`. Phase 4 ends with H1 at 0, H2 at 100, and OutstandingAmount 100100. Run folders:
+Chain A, 2026-11-16 08:42 to 08:46 UTC, run step by step with the replay fix. Every step passes. Issuance `01554A56C7DD9B55C78A1B64A200DBFFE9413E5D46EEFB67`. Phase 4 ends with H1 at 0, H2 at 100, and OutstandingAmount 100100. Run folders:
 - Phase 0 (rehearsal, throwaway issuance): `runs/2026-11-16T08-42-01-844Z-phase0-rehearsal`
 - Phase 1: `runs/2026-11-16T08-43-09-664Z-phase1-issuance`
 - Phase 1.3: `runs/2026-11-16T08-43-25-501Z-phase1-3-operational-batch`
@@ -190,6 +190,6 @@ Pass criteria:
 - A lost holder key cannot be recovered. Source: none yet (unverified).
 - Signed selective disclosure has these known gaps in v1:
   - **Attestor trust.** Decision 2026-11-16: accepted as a v1 trust assumption. The attestor signs `over18: true`. The holder cannot prove it from a birthdate, and the verifier trusts the attestor's claim. Rejected for v1: the verifier sees the birthdate (leaks the exact date). Deferred: a zero-knowledge over18 proof (v2). Revisit if no regulated KYC provider signs the age claim.
-  - **Replay.** Design approved 2026-11-16. The verifier issues a nonce and an expiry (5 minutes). The holder signs both, with a hash of the presentation, using a holder Ed25519 key. The verifier accepts each nonce once. Phase 2 and Phase 3.4 scripts implement it. The offline self-test passes (5 replay cases, including a reused presentation). The ledger chain ran with it on 2026-11-16 (08:42 and 08:53 chains). It must run again after the 2026-11-25 reset. Fix before any multi-verifier run.
+  - **Replay.** Design approved 2026-11-16. The verifier issues a nonce and an expiry (5 minutes). The holder signs both, with a hash of the presentation, using a holder Ed25519 key. The verifier accepts each nonce once. Phase 2 and Phase 3.4 scripts implement it. The offline self-test passes (5 replay cases, including a reused presentation). Both 2026-11-16 chains ran the replay checks on testnet. Chain A: Phase 2 at 08:44 UTC, Phase 3.4 at 08:45. Chain B (runner): Phase 2 at 08:53 UTC, Phase 3.4 at 08:54. It must run again after the 2026-11-25 reset. Fix before any multi-verifier run.
   - **Linkability.** Decision 2026-11-16: accepted for v1. Each presentation carries the same signature and holder address. A verifier can link a holder's visits through the address. The address is already public on the ledger with its balance and transfers. Rejected for v1: fresh attestation per presentation (does not stop address linkage, needs the attestor online per use). Rejected: a pseudonymous subject per verifier (breaks the credential and MPT authorization on the holder account).
   - **Leaked shape.** Decision 2026-11-16: accepted for v1. The verifier learns the count of signed claims. Every holder signs the same three claims, so the count identifies no one. It leaks only if the claim set varies between holders. Revisit if production claim sets vary. Fix then: pad every attestation to a fixed digest count.

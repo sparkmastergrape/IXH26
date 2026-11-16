@@ -62,14 +62,17 @@ function check(name, ok, detail = '') {
 const digest = (salt, name, value) =>
   crypto.createHash('sha256').update(`${salt}|${name}|${JSON.stringify(value)}`).digest('hex')
 
-// Attestor A signs the digests and binds them to the holder address.
-function attest(attestorPriv, holder, claims) {
+// Attestor A signs the digests, the holder address, and the holder public key.
+// Signing the holder key binds it to the address. A verifier accepts only that key (review finding 1).
+const pem = (key) => key.export({ type: 'spki', format: 'pem' })
+function attest(attestorPriv, holder, claims, holderPubPem) {
   const disclosures = Object.entries(claims).map(([name, value]) => ({
     name, value, salt: crypto.randomBytes(16).toString('hex')
   }))
   const payloadStr = JSON.stringify({
     sub: holder,
     alg: 'ed25519',
+    holderPub: holderPubPem,
     digests: disclosures.map((d) => digest(d.salt, d.name, d.value)).sort()
   })
   const sig = crypto.sign(null, Buffer.from(payloadStr), attestorPriv).toString('base64')
@@ -104,15 +107,17 @@ function verifyPresentation(attestorPub, holder, pres) {
 // Verifier P issues a nonce and an expiry. The holder signs both, with a hash of the presentation.
 // P accepts each nonce once. A reused or expired challenge fails.
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
+// Audience of the challenge. A holder signs it, so a challenge from another verifier fails (review finding 2).
+const VERIFIER_ID = 'P-demo-verifier'
 const presHash = (pres) => crypto.createHash('sha256').update(pres.payloadStr + '|' + pres.sig).digest('hex')
 
 function issueChallenge(now = Date.now()) {
-  return { nonce: crypto.randomBytes(16).toString('hex'), expiry: now + CHALLENGE_TTL_MS, used: false }
+  return { nonce: crypto.randomBytes(16).toString('hex'), expiry: now + CHALLENGE_TTL_MS, verifier: VERIFIER_ID, used: false }
 }
 
-// Holder signs the challenge and the presentation with the holder's own Ed25519 key.
+// Holder signs the challenge, the verifier identity, and the presentation with the holder's Ed25519 key.
 function holderRespond(holderPriv, ch, pres) {
-  const msg = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  const msg = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, verifier: ch.verifier, presentation: presHash(pres) })
   return { msg, sig: crypto.sign(null, Buffer.from(msg), holderPriv).toString('base64') }
 }
 
@@ -121,7 +126,11 @@ function verifyFresh(attestorPub, holderPub, holder, ch, pres, response, now = D
   if (ch.used) return { ok: false, reason: 'replay: nonce already used' }
   ch.used = true
   if (now > ch.expiry) return { ok: false, reason: 'challenge expired' }
-  const expected = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  if (ch.verifier !== VERIFIER_ID) return { ok: false, reason: 'challenge not issued for this verifier' }
+  // The key that signs the challenge must be the key the attestor bound to this holder.
+  const attested = JSON.parse(pres.payloadStr).holderPub
+  if (attested !== pem(holderPub)) return { ok: false, reason: 'holder key not bound to attestation' }
+  const expected = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, verifier: ch.verifier, presentation: presHash(pres) })
   if (response.msg !== expected) return { ok: false, reason: 'holder response does not match challenge' }
   if (!crypto.verify(null, Buffer.from(response.msg), holderPub, Buffer.from(response.sig, 'base64'))) {
     return { ok: false, reason: 'bad holder signature' }
@@ -132,19 +141,19 @@ function verifyFresh(attestorPub, holderPub, holder, ch, pres, response, now = D
 // Throwaway input self-test (offline). Must pass before any ledger step.
 function selfTest(attestorPriv, attestorPub) {
   const h = 'rSelfTestHolder'
-  const att = attest(attestorPriv, h, { over18: true, country: 'IT', docNumber: 'XX000001' })
+  const hk = crypto.generateKeyPairSync('ed25519')
+  const att = attest(attestorPriv, h, { over18: true, country: 'IT', docNumber: 'XX000001' }, pem(hk.publicKey))
   const cases = [
     ['valid presentation passes', verifyPresentation(attestorPub, h, present(att, ['over18', 'country'])).ok === true],
     ['hidden claim is not revealed', present(att, ['over18']).revealed.every((d) => d.name !== 'docNumber')],
     ['wrong holder fails', verifyPresentation(attestorPub, 'rOther', present(att, ['over18', 'country'])).ok === false],
     ['tampered country fails', (() => { const p = present(att, ['over18', 'country']); p.revealed[1].value = 'FR'; return verifyPresentation(attestorPub, h, p).ok === false })()],
     ['tampered payload fails', (() => { const p = present(att, ['over18', 'country']); p.payloadStr = p.payloadStr + ' '; return verifyPresentation(attestorPub, h, p).ok === false })()],
-    ['over18 false fails', (() => { const a2 = attest(attestorPriv, h, { over18: false, country: 'IT' }); return verifyPresentation(attestorPub, h, present(a2, ['over18', 'country'])).ok === false })()]
+    ['over18 false fails', (() => { const a2 = attest(attestorPriv, h, { over18: false, country: 'IT' }, pem(hk.publicKey)); return verifyPresentation(attestorPub, h, present(a2, ['over18', 'country'])).ok === false })()]
   ]
   for (const [name, ok] of cases) check(`selftest: ${name}`, ok)
 
   // Replay cases. Holder key is a throwaway key for this self-test only.
-  const hk = crypto.generateKeyPairSync('ed25519')
   const otherKey = crypto.generateKeyPairSync('ed25519')
   const pres = present(att, ['over18', 'country'])
   const ch1 = issueChallenge()
@@ -156,13 +165,21 @@ function selfTest(attestorPriv, attestorPub) {
   const ch3 = issueChallenge(Date.now() - 2 * CHALLENGE_TTL_MS)
   const expired = verifyFresh(attestorPub, hk.publicKey, h, ch3, pres, holderRespond(hk.privateKey, ch3, pres))
   const ch4 = issueChallenge()
-  const badKey = verifyFresh(attestorPub, hk.publicKey, h, ch4, pres, holderRespond(otherKey.privateKey, ch4, pres))
+  const badKey = verifyFresh(attestorPub, otherKey.publicKey, h, ch4, pres, holderRespond(otherKey.privateKey, ch4, pres))
+  // Substitute-key attack: captured presentation, attacker key, fresh nonce. The attested key must reject it.
+  const ch5 = issueChallenge()
+  const subst = verifyFresh(attestorPub, otherKey.publicKey, h, ch5, pres, holderRespond(otherKey.privateKey, ch5, pres))
+  // Verifier identity: a challenge issued for another verifier must fail.
+  const ch6 = { ...issueChallenge(), verifier: 'some-other-verifier' }
+  const otherVerifier = verifyFresh(attestorPub, hk.publicKey, h, ch6, pres, holderRespond(hk.privateKey, ch6, pres))
   const replayCases = [
     ['fresh challenge passes', first.ok === true],
     ['reused presentation fails (replay)', second.ok === false && second.reason.startsWith('replay')],
     ['old presentation with new nonce fails', crossNonce.ok === false],
     ['expired challenge fails', expired.ok === false && expired.reason === 'challenge expired'],
-    ['wrong holder key fails', badKey.ok === false]
+    ['wrong holder key fails', badKey.ok === false],
+    ['substitute key with captured presentation fails', subst.ok === false && subst.reason === 'holder key not bound to attestation'],
+    ['challenge for another verifier fails', otherVerifier.ok === false && otherVerifier.reason === 'challenge not issued for this verifier']
   ]
   for (const [name, ok] of replayCases) check(`selftest: replay: ${name}`, ok)
 }
@@ -231,8 +248,8 @@ async function main() {
   log.holders = { H1: H1.address, H2: H2.address }
 
   // Attestor issues claims. H1 passes. H2 fails (over18 false). Document number is never revealed.
-  const attH1 = attest(attestorPriv, H1.address, { over18: true, country: 'IT', docNumber: 'XX111111' })
-  const attH2 = attest(attestorPriv, H2.address, { over18: false, country: 'IT', docNumber: 'XX222222' })
+  const attH1 = attest(attestorPriv, H1.address, { over18: true, country: 'IT', docNumber: 'XX111111' }, pem(hk1.publicKey))
+  const attH2 = attest(attestorPriv, H2.address, { over18: false, country: 'IT', docNumber: 'XX222222' }, pem(hk2.publicKey))
 
   // 2.1 P issues a nonce and expiry per holder. Each holder signs the challenge with the holder key.
   const ch1 = issueChallenge()
