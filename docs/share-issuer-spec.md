@@ -28,6 +28,7 @@ A property owner issues fractional shares as an MPT on XRPL.
 |---|---|
 | Credentials enabled on devnet, testnet, and mainnet | Known Amendments, live ledger check |
 | MPTs enabled 2025-10-01 | Known Amendments |
+| Issuer cannot hold its own MPTs. Tokens sent to the issuer burn, so supply in circulation equals MaximumAmount minus OutstandingAmount | MPT docs, Core Properties and Supply Cap |
 | Flag `tfMPTCanClawback` must be set at issuance | MPTokenIssuanceCreate docs |
 | Flag `tfMPTCanLock` allows lock and unlock | MPTokenIssuanceCreate docs |
 | Flag `tfMPTRequireAuth` enables allow-listing | MPTokenIssuanceCreate docs |
@@ -79,7 +80,7 @@ Done when the real MPT exists with all flags set.
 
 1.1. I creates the MPT. Record the issuance ID.
 1.2. Confirm the flags on the ledger.
-1.3. I sends the first share batch to operational account O. O needs a Credential and authorization first, like any holder. The issuer cannot hold its own MPTs.
+1.3. I sends the first share batch to operational account O. O needs a Credential and authorization first, like any holder. The issuer cannot hold its own MPTs (MPT docs, Core Properties).
 
 ## Phase 2: Holder onboarding
 
@@ -98,6 +99,7 @@ Done when shares move and a payout reaches authorized holders only.
 3.1. I sends shares to H1.
 3.2. H1 sends shares to H2 only if H2 is authorized. Confirm the transfer fails for an unauthorized H2.
 3.3. I sends a test payout to H1.
+3.4. Positive case: H2 passes the proof, K issues the Credential, H2 accepts it and opts in, and I authorizes H2. Then H1 sends 100 shares to H2. Confirm the transfer succeeds. Script: src/run-share-issuer-phase3-positive.mjs.
 
 ## Phase 4: Compliance actions (stretch)
 
@@ -117,12 +119,19 @@ Done when the locked balance cannot move and the clawback clears it.
 | KYC proof fails | Holder stays unauthorized | Holder sees a failure message. No partial authorization. |
 | Flags wrong at issuance | Permanent. Cannot undo. | Phase 0 test on throwaway issuance |
 | Testnet reset on 2026-11-25 | Wipes the issuance and all ledger state | Keep the run folders as the record. Re-run Phases 0 to 4 on the new testnet. |
+| Phase 3 positive run pre-check fails: H1 holds 1050, not 950 (after Phase 4 clawback) | Run stops at pre-check. No transfer. Kept as FAIL in runs/2026-11-16T05-48-31-021Z-phase3-positive-transfer. | Re-create the pre-Phase 4 state on a fresh issuance and run the chain. Passing run: runs/2026-11-16T05-51-56-889Z-phase3-positive-transfer. |
 
 ## Network
 
-- Build on **testnet** for v1. Testnet amendment status mirrors mainnet (docs). Credentials confirmed live on testnet. MPT status on testnet follows the mainnet status by that rule. Confirm by ledger check before Phase 1.
+- Build on **testnet** for v1. Testnet amendment status mirrors mainnet (xrpl.org blog 2026-11-09, Background). Credentials confirmed live on testnet. MPT status on testnet follows the mainnet status by that rule. Confirm by ledger check before Phase 1.
 - Testnet and Devnet reset on Wednesday, 2026-11-25. Source: xrpl.org blog, "Upcoming Testnet and Devnet Resets," published 2026-11-09. The reset is for full-history server stability.
-- Do not use devnet for v1. Devnet also resets on 2026-11-25 and tracks the develop branch.
+- Do not use devnet for v1. Devnet also resets on 2026-11-25 and tracks the develop branch (xrpl.org blog 2026-11-09, Background).
+
+## Other tracked files (not v1)
+
+- `src/run-payroll.mjs` and its `run` script in `package.json`. Kept by owner decision. Not part of the share issuer. Source: payroll-spec v2 (not checked in this repo).
+- `docs/session-review.md`. Kept by owner decision. A review record. It does not authorize new work.
+- Run folders `runs/2026-11-15T23-42-06-942Z-rehearsal`, `runs/2026-11-15T23-44-42-733Z-real`, and `runs/2026-11-16T04-14-34-856Z-rehearsal`. Kept by owner decision. Gitignored. Modes `rehearsal` and `real` predate the phase script modes.
 
 ## Open items (not verified)
 
@@ -133,11 +142,11 @@ Done when the locked balance cannot move and the clawback clears it.
 
 ## Threat note (draft)
 
-- Holder balances and transfers are public. Amounts are not hidden in v1.
+- Holder balances and transfers are public. Amounts are not hidden in v1. Source: none yet (unverified).
 - KYC data stays off-chain. The chain records only the Credential.
 - The issuer is trusted to authorize holders correctly. The ledger does not enforce the gate in v1.
 - The proof verifier P is trusted to check the proof.
-- A lost holder key cannot be recovered.
+- A lost holder key cannot be recovered. Source: none yet (unverified).
 - Signed selective disclosure has these known gaps in v1:
   - **Attestor trust.** The attestor signs `over18: true`. The holder cannot prove it from a birthdate.
   - **Replay.** The verifier checks no nonce, challenge, or expiry. A captured presentation can be reused. Fix before any multi-verifier run.

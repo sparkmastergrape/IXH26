@@ -8,7 +8,7 @@
 // Attestor A signs salted digests of holder claims. The holder reveals only the claims the policy needs.
 // The verifier P checks the signature, the holder binding, the disclosed digests, and the policy.
 // This is NOT zero-knowledge. P sees the disclosed claims (over18, country). The document number stays hidden.
-// Circom and snarkjs were not installed. Circom needs a Rust build and a ptau download. Deferred.
+// Circom and snarkjs are not used in v1. The zero-knowledge path is deferred (see spec Open items).
 //
 // K is the mock KYC issuer from Phase 1.3. Its seed is read from that run.
 // The issuer I is the Phase 1 issuer.

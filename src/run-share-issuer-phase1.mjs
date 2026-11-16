@@ -4,8 +4,8 @@
 // Testnet only. Seeds go to runs/ only. Nothing is committed.
 // Runs 1.1 (create MPT) and 1.2 (confirm flags on the ledger).
 // Step 1.3 is not in this script. It runs in src/run-share-issuer-phase1-3.mjs, to operational account O.
-// An issuer cannot hold its own MPTs. A Payment to the issuer burns the tokens.
-// Supply is MaximumAmount minus OutstandingAmount.
+// An issuer cannot hold its own MPTs (xrpl.org MPT docs, Core Properties). A Payment to the issuer burns the tokens.
+// Supply is MaximumAmount minus OutstandingAmount (xrpl.org MPT docs, Supply Cap).
 
 import fs from 'fs'
 import path from 'path'
