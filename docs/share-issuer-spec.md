@@ -2,6 +2,19 @@
 
 Status: Phases 0 to 4 run on testnet. Run folders are in runs/.
 
+Chain A, 2026-11-16 08:42 to 08:46 UTC, run step by step with the replay fix. Every step passes. Issuance `01554A56C7DD9B55C78A1B64A200DBFFE9413E5D46EEFB67`. Phase 4 ends with H1 at 0, H2 at 100, and OutstandingAmount 100100. Run folders:
+- Phase 0 (rehearsal, throwaway issuance): `runs/2026-11-16T08-42-01-844Z-phase0-rehearsal`
+- Phase 1: `runs/2026-11-16T08-43-09-664Z-phase1-issuance`
+- Phase 1.3: `runs/2026-11-16T08-43-25-501Z-phase1-3-operational-batch`
+- Phase 2 (replay check passes, reused presentation rejected): `runs/2026-11-16T08-44-15-235Z-phase2-onboarding`
+- Phase 3: `runs/2026-11-16T08-44-57-401Z-phase3-transfers`
+- Phase 3.4 (replay check passes, reused presentation rejected): `runs/2026-11-16T08-45-18-069Z-phase3-positive-transfer`
+- Phase 4: `runs/2026-11-16T08-45-55-576Z-phase4-compliance`
+
+This chain ran before the 2026-11-25 reset. Its ledger state will be wiped by that reset.
+
+Run the full chain with one command: `npm run share-issuer:chain`. It runs Phases 0 to 4 in order, then a read-only ledger check (`npm run share-issuer:verify` runs that check alone on given run folders). It stops at the first failed step.
+
 ## Goal
 
 A property owner issues fractional shares as an MPT on XRPL.
@@ -37,7 +50,7 @@ A property owner issues fractional shares as an MPT on XRPL.
 | Credentials gate DepositPreauth, Permissioned DEX, and Payment `CredentialIDs` | Credentials and Payment docs |
 | **No protocol rule lets a Credential gate MPTokenAuthorize directly** | Docs search, 2026-11-15 |
 | Testnet and Devnet reset on Wednesday, 2026-11-25 | xrpl.org blog, "Upcoming Testnet and Devnet Resets," 2026-11-09 |
-| Lock of one holder returns `tecLOCKED` on a payment from that holder. Observed on testnet, Phase 4 run 2026-11-16. | Ledger observation. rippled `include/xrpl/protocol/TER.h` line 369 (`tecLOCKED = 192`). Not listed on xrpl.org (issue XRPLF/xrpl-dev-portal#4070). |
+| Lock of one holder returns `tecLOCKED` on a payment from that holder. Observed on testnet, Phase 4 run 2026-11-16. | Ledger observation. rippled `include/xrpl/protocol/TER.h` line 369 (`tecLOCKED = 192`). xrpl.org Send an MPT tutorial, step 5 Caution, lists `tecLOCKED` for a locked sender or receiver (docs search, 2026-11-16; full page not opened). The ConfidentialMPTSend error table also lists it. Earlier note "not listed on xrpl.org" is superseded. Status of XRPLF/xrpl-dev-portal#4070 not checked. |
 
 ## Design decision: how the KYC gate works
 
@@ -109,6 +122,33 @@ Done when the locked balance cannot move and the clawback clears it.
 4.2. Confirm H1 cannot send shares.
 4.3. I claws back H1 for the full amount. Confirm the balance reads zero.
 
+## Phase 5: Deposit authorization (v2, draft)
+
+Status: draft. Nothing in this phase has run. Phase 5 starts only after v1 passes. Each field and behavior below needs a source check before it runs.
+
+Goal: Test whether a Credential gates MPT payments through DepositAuth.
+
+This phase answers three open questions:
+- Does DepositAuth block an MPT payment that has no `CredentialIDs`?
+- Does a Payment with `CredentialIDs` succeed for an MPT?
+- Must the credential sit with the sender, the receiver, or both?
+
+5.0. Pre-checks. Confirm each item before any transaction.
+- Confirm the `AuthorizeCredentials` field of DepositPreauth on testnet. Source: DepositPreauth docs.
+- Confirm the `CredentialIDs` field of Payment on testnet. Source: Payment docs.
+- Record the source of each field in the run log.
+
+5.1. H1 enables DepositAuth on its account.
+5.2. H1 creates a DepositPreauth that names credential type T issued by K.
+5.3. Control case. H2 sends a test amount of shares to H1 with no `CredentialIDs`. Record the result code. Expected result: unknown. This result answers the first open question.
+5.4. Positive case. H2 sends the same amount to H1 with `CredentialIDs` that name H2's credential from K. Expected result: success.
+5.5. Confirm the balances of H1 and H2 after each step.
+5.6. If 5.4 fails, repeat 5.4 with the credential held by H1 instead. Record the result. This step answers the third open question.
+
+Pass criteria:
+- 5.4 succeeds and H1 receives the amount.
+- The run log records the 5.3 result, whichever it is, with its source.
+
 ## Failure handling
 
 | Failure | Effect | Fix |
@@ -136,6 +176,7 @@ Done when the locked balance cannot move and the clawback clears it.
 ## Open items (not verified)
 
 - Whether DepositAuth and CredentialIDs gate MPT payments (v2 only).
+- Clawback MPT `Amount` format. xrpl.org Clawback Fields (docs search, 2026-11-16) requires `Holder` for MPTs and a non-zero `value`. It does not show the MPT `Amount` shape. The Phase 4 run uses the ledger-accepted format. Confirm against the MPT clawback example page before the reset.
 - Whether zero-knowledge proofs are worth their cost for v2. Deferred. Revisit before v2 starts.
 - Whether verifiers may learn the holder address and the revealed claims. Assumed yes in v1.
 - Who issues real KYC in production. The demo uses a mock K.
@@ -148,7 +189,7 @@ Done when the locked balance cannot move and the clawback clears it.
 - The proof verifier P is trusted to check the proof.
 - A lost holder key cannot be recovered. Source: none yet (unverified).
 - Signed selective disclosure has these known gaps in v1:
-  - **Attestor trust.** The attestor signs `over18: true`. The holder cannot prove it from a birthdate.
-  - **Replay.** The verifier checks no nonce, challenge, or expiry. A captured presentation can be reused. Fix before any multi-verifier run.
-  - **Linkability.** Each presentation carries the same signature and holder address. A verifier can link a holder's visits.
-  - **Leaked shape.** The verifier learns the count of signed claims.
+  - **Attestor trust.** Decision 2026-11-16: accepted as a v1 trust assumption. The attestor signs `over18: true`. The holder cannot prove it from a birthdate, and the verifier trusts the attestor's claim. Rejected for v1: the verifier sees the birthdate (leaks the exact date). Deferred: a zero-knowledge over18 proof (v2). Revisit if no regulated KYC provider signs the age claim.
+  - **Replay.** Design approved 2026-11-16. The verifier issues a nonce and an expiry (5 minutes). The holder signs both, with a hash of the presentation, using a holder Ed25519 key. The verifier accepts each nonce once. Phase 2 and Phase 3.4 scripts implement it. The offline self-test passes (5 replay cases, including a reused presentation). Both 2026-11-16 chains ran the replay checks on testnet. Chain A: Phase 2 at 08:44 UTC, Phase 3.4 at 08:45. Chain B (runner): Phase 2 at 08:53 UTC, Phase 3.4 at 08:54. It must run again after the 2026-11-25 reset. Fix before any multi-verifier run.
+  - **Linkability.** Decision 2026-11-16: accepted for v1. Each presentation carries the same signature and holder address. A verifier can link a holder's visits through the address. The address is already public on the ledger with its balance and transfers. Rejected for v1: fresh attestation per presentation (does not stop address linkage, needs the attestor online per use). Rejected: a pseudonymous subject per verifier (breaks the credential and MPT authorization on the holder account).
+  - **Leaked shape.** Decision 2026-11-16: accepted for v1. The verifier learns the count of signed claims. Every holder signs the same three claims, so the count identifies no one. It leaks only if the claim set varies between holders. Revisit if production claim sets vary. Fix then: pad every attestation to a fixed digest count.
