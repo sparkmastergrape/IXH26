@@ -1,6 +1,6 @@
 // KYC-gated real-estate share issuer, Phase 3 positive test (transfer after H2 is authorized).
 // Usage:
-//   node src/run-share-issuer-phase3-positive.mjs <phase1-run-dir> <phase2-run-dir>
+//   node src/run-share-issuer-phase3-positive.mjs <phase1-run-dir> <phase2-run-dir> <phase1-3-run-dir>
 // Testnet only. Seeds and keys stay in runs/. Nothing is committed.
 //
 // Phase 2 refused H2 with a failing proof. This run is a second attestation for H2 with a passing claim.
@@ -21,16 +21,16 @@ const ALLOWED_COUNTRIES = ['IT']
 const SEND = 100n
 const MODE = 'phase3-positive-transfer'
 
-const [p1Arg, p2Arg] = process.argv.slice(2)
-if (!p1Arg || !p2Arg) {
-  console.error('usage: node src/run-share-issuer-phase3-positive.mjs <phase1-run-dir> <phase2-run-dir>')
+const [p1Arg, p2Arg, p13Arg] = process.argv.slice(2)
+if (!p1Arg || !p2Arg || !p13Arg) {
+  console.error('usage: node src/run-share-issuer-phase3-positive.mjs <phase1-run-dir> <phase2-run-dir> <phase1-3-run-dir>')
   process.exit(3)
 }
 const p1run = JSON.parse(fs.readFileSync(path.join(p1Arg, 'run.json'), 'utf8'))
 const p1wallets = JSON.parse(fs.readFileSync(path.join(p1Arg, 'wallets.json'), 'utf8'))
 const p2wallets = JSON.parse(fs.readFileSync(path.join(p2Arg, 'wallets.json'), 'utf8'))
 const p2keys = JSON.parse(fs.readFileSync(path.join(p2Arg, 'keys.json'), 'utf8'))
-const p13wallets = JSON.parse(fs.readFileSync(path.join('runs', '2026-11-16T04-51-19-986Z-phase1-3-operational-batch', 'wallets.json'), 'utf8'))
+const p13wallets = JSON.parse(fs.readFileSync(path.join(p13Arg, 'wallets.json'), 'utf8'))
 const ID = p1run.mptIssuanceID
 const I = Wallet.fromSeed(p1wallets.issuer)
 const K = Wallet.fromSeed(p13wallets.kycIssuer)
