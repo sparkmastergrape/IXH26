@@ -22,7 +22,7 @@ A property owner issues fractional shares as an MPT on XRPL.
 - **Cryptography:** Signed selective disclosure for the KYC check (v1). Zero-knowledge proof is deferred. See Open items.
 - **XRPL applications:** Credential record.
 
-## Verified facts (2026-11-15)
+## Verified facts (2026-11-15 and 2026-11-16)
 
 | Fact | Source |
 |---|---|
@@ -65,7 +65,7 @@ Build v1 first. Test v2 only after v1 passes.
 
 Done when each step passes on a throwaway issuance.
 
-0.1. I creates a throwaway MPT with flags CanClawback, CanLock, RequireAuth, and transfer fee 0.
+0.1. I creates a throwaway MPT with flags CanTransfer, CanClawback, CanLock, RequireAuth, and transfer fee 0. CanTransfer lets tokens move to accounts other than the issuer (MPTokenIssuanceCreate docs, tfMPTCanTransfer).
 0.2. K issues a test Credential to H1.
 0.3. H1 accepts the Credential.
 0.4. H1 submits MPTokenAuthorize to opt in.

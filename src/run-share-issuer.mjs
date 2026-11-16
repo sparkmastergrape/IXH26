@@ -1,7 +1,7 @@
 // KYC-gated real-estate share issuer, per docs/share-issuer-spec.md (v1).
 // Usage:
 //   node src/run-share-issuer.mjs --rehearsal   (Phase 0: throwaway issuance on testnet)
-// Only Phase 0 is implemented. Phases 1 to 4 need a go-ahead.
+// Phase 0 only. Phases 1 to 4 have their own scripts (see docs/share-issuer-spec.md and src/).
 // Testnet only. Seeds and keys go to runs/ (gitignored). Nothing is committed.
 
 import fs from 'fs'

@@ -3,8 +3,9 @@
 //   node src/run-share-issuer-phase1.mjs
 // Testnet only. Seeds go to runs/ only. Nothing is committed.
 // Runs 1.1 (create MPT) and 1.2 (confirm flags on the ledger).
-// Step 1.3 is not run. An issuer cannot hold its own MPTs. A Payment to the issuer burns the tokens.
-// Supply is MaximumAmount minus OutstandingAmount. Confirm the spec wording before any 1.3 action.
+// Step 1.3 is not in this script. It runs in src/run-share-issuer-phase1-3.mjs, to operational account O.
+// An issuer cannot hold its own MPTs. A Payment to the issuer burns the tokens.
+// Supply is MaximumAmount minus OutstandingAmount.
 
 import fs from 'fs'
 import path from 'path'
