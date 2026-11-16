@@ -78,7 +78,8 @@ function attest(attestorPriv, holder, claims) {
 
 // Holder reveals only the named claims.
 function present(att, reveal) {
-  return { payloadStr: att.payloadStr, sig: att.sig, revealed: att.disclosures.filter((d) => reveal.includes(d.name)) }
+  // Copy each disclosure. A tampered copy must not change the attestation for later checks.
+  return { payloadStr: att.payloadStr, sig: att.sig, revealed: att.disclosures.filter((d) => reveal.includes(d.name)).map((d) => ({ ...d })) }
 }
 
 // Verifier P. Returns { ok, reason }.
@@ -99,6 +100,35 @@ function verifyPresentation(attestorPub, holder, pres) {
   return { ok: true, reason: 'pass' }
 }
 
+// ---- Replay defense (design approved 2026-11-16) ----
+// Verifier P issues a nonce and an expiry. The holder signs both, with a hash of the presentation.
+// P accepts each nonce once. A reused or expired challenge fails.
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const presHash = (pres) => crypto.createHash('sha256').update(pres.payloadStr + '|' + pres.sig).digest('hex')
+
+function issueChallenge(now = Date.now()) {
+  return { nonce: crypto.randomBytes(16).toString('hex'), expiry: now + CHALLENGE_TTL_MS, used: false }
+}
+
+// Holder signs the challenge and the presentation with the holder's own Ed25519 key.
+function holderRespond(holderPriv, ch, pres) {
+  const msg = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  return { msg, sig: crypto.sign(null, Buffer.from(msg), holderPriv).toString('base64') }
+}
+
+// Verifier P. Consumes the nonce on every attempt, pass or fail.
+function verifyFresh(attestorPub, holderPub, holder, ch, pres, response, now = Date.now()) {
+  if (ch.used) return { ok: false, reason: 'replay: nonce already used' }
+  ch.used = true
+  if (now > ch.expiry) return { ok: false, reason: 'challenge expired' }
+  const expected = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  if (response.msg !== expected) return { ok: false, reason: 'holder response does not match challenge' }
+  if (!crypto.verify(null, Buffer.from(response.msg), holderPub, Buffer.from(response.sig, 'base64'))) {
+    return { ok: false, reason: 'bad holder signature' }
+  }
+  return verifyPresentation(attestorPub, holder, pres)
+}
+
 // Throwaway input self-test (offline). Must pass before any ledger step.
 function selfTest(attestorPriv, attestorPub) {
   const h = 'rSelfTestHolder'
@@ -112,6 +142,29 @@ function selfTest(attestorPriv, attestorPub) {
     ['over18 false fails', (() => { const a2 = attest(attestorPriv, h, { over18: false, country: 'IT' }); return verifyPresentation(attestorPub, h, present(a2, ['over18', 'country'])).ok === false })()]
   ]
   for (const [name, ok] of cases) check(`selftest: ${name}`, ok)
+
+  // Replay cases. Holder key is a throwaway key for this self-test only.
+  const hk = crypto.generateKeyPairSync('ed25519')
+  const otherKey = crypto.generateKeyPairSync('ed25519')
+  const pres = present(att, ['over18', 'country'])
+  const ch1 = issueChallenge()
+  const resp1 = holderRespond(hk.privateKey, ch1, pres)
+  const first = verifyFresh(attestorPub, hk.publicKey, h, ch1, pres, resp1)
+  const second = verifyFresh(attestorPub, hk.publicKey, h, ch1, pres, resp1)
+  const ch2 = issueChallenge()
+  const crossNonce = verifyFresh(attestorPub, hk.publicKey, h, ch2, pres, resp1)
+  const ch3 = issueChallenge(Date.now() - 2 * CHALLENGE_TTL_MS)
+  const expired = verifyFresh(attestorPub, hk.publicKey, h, ch3, pres, holderRespond(hk.privateKey, ch3, pres))
+  const ch4 = issueChallenge()
+  const badKey = verifyFresh(attestorPub, hk.publicKey, h, ch4, pres, holderRespond(otherKey.privateKey, ch4, pres))
+  const replayCases = [
+    ['fresh challenge passes', first.ok === true],
+    ['reused presentation fails (replay)', second.ok === false && second.reason.startsWith('replay')],
+    ['old presentation with new nonce fails', crossNonce.ok === false],
+    ['expired challenge fails', expired.ok === false && expired.reason === 'challenge expired'],
+    ['wrong holder key fails', badKey.ok === false]
+  ]
+  for (const [name, ok] of replayCases) check(`selftest: replay: ${name}`, ok)
 }
 
 // ---- Ledger helpers ----
@@ -155,6 +208,9 @@ async function main() {
   const attestorPriv = attestorKeys.privateKey
   const attestorPub = attestorKeys.publicKey
   selfTest(attestorPriv, attestorPub)
+  // Holder keys sign replay challenges. Stored in keys.json only.
+  const hk1 = crypto.generateKeyPairSync('ed25519')
+  const hk2 = crypto.generateKeyPairSync('ed25519')
 
   const client = new Client(WS)
   await client.connect()
@@ -168,7 +224,9 @@ async function main() {
   fs.writeFileSync(path.join(runDir, 'wallets.json'), JSON.stringify({ holder1: H1.seed, holder2: H2.seed }, null, 2))
   fs.writeFileSync(path.join(runDir, 'keys.json'), JSON.stringify({
     attestorPrivatePem: attestorPriv.export({ type: 'pkcs8', format: 'pem' }),
-    attestorPublicPem: attestorPub.export({ type: 'spki', format: 'pem' })
+    attestorPublicPem: attestorPub.export({ type: 'spki', format: 'pem' }),
+    holder1PrivatePem: hk1.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+    holder2PrivatePem: hk2.privateKey.export({ type: 'pkcs8', format: 'pem' })
   }, null, 2))
   log.holders = { H1: H1.address, H2: H2.address }
 
@@ -176,12 +234,18 @@ async function main() {
   const attH1 = attest(attestorPriv, H1.address, { over18: true, country: 'IT', docNumber: 'XX111111' })
   const attH2 = attest(attestorPriv, H2.address, { over18: false, country: 'IT', docNumber: 'XX222222' })
 
-  // 2.1 Submit proofs to P.
-  const r1 = verifyPresentation(attestorPub, H1.address, present(attH1, ['over18', 'country']))
-  const r2 = verifyPresentation(attestorPub, H2.address, present(attH2, ['over18', 'country']))
+  // 2.1 P issues a nonce and expiry per holder. Each holder signs the challenge with the holder key.
+  const ch1 = issueChallenge()
+  const ch2 = issueChallenge()
+  const pres1 = present(attH1, ['over18', 'country'])
+  const pres2 = present(attH2, ['over18', 'country'])
+  const r1 = verifyFresh(attestorPub, hk1.publicKey, H1.address, ch1, pres1, holderRespond(hk1.privateKey, ch1, pres1))
+  const r2 = verifyFresh(attestorPub, hk2.publicKey, H2.address, ch2, pres2, holderRespond(hk2.privateKey, ch2, pres2))
+  const reuse1 = verifyFresh(attestorPub, hk1.publicKey, H1.address, ch1, pres1, holderRespond(hk1.privateKey, ch1, pres1))
   check('2.1 P passes H1', r1.ok === true, r1.reason)
   check('2.1 P fails H2', r2.ok === false, r2.reason)
-  log.proofResults = { H1: r1, H2: r2 }
+  check('2.1 P rejects reused H1 presentation', reuse1.ok === false, reuse1.reason)
+  log.proofResults = { H1: r1, H2: r2, H1Reuse: reuse1 }
 
   // 2.2 H1 passes. K issues the Credential.
   await submit(client, { TransactionType: 'CredentialCreate', Account: K.address, Subject: H1.address, CredentialType: CRED_TYPE }, K, 'CredentialCreate (K to H1)')

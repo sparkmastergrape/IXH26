@@ -38,6 +38,9 @@ const H1 = Wallet.fromSeed(p2wallets.holder1)
 const H2 = Wallet.fromSeed(p2wallets.holder2)
 const attestorPriv = crypto.createPrivateKey(p2keys.attestorPrivatePem)
 const attestorPub = crypto.createPublicKey(p2keys.attestorPublicPem)
+// H2 holder key from the Phase 2 run. Signs the replay challenge (design approved 2026-11-16).
+const holder2Priv = crypto.createPrivateKey(p2keys.holder2PrivatePem)
+const holder2Pub = crypto.createPublicKey(p2keys.holder2PrivatePem)
 
 const runDir = path.join('runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${MODE}`)
 fs.mkdirSync(runDir, { recursive: true })
@@ -78,6 +81,32 @@ function verifyPresentation(holder, pres) {
   if (get('over18') !== true) return { ok: false, reason: 'over18 not proven' }
   if (!ALLOWED_COUNTRIES.includes(get('country'))) return { ok: false, reason: 'country not allowed' }
   return { ok: true, reason: 'pass' }
+}
+
+// ---- Replay defense (design approved 2026-11-16, same as Phase 2) ----
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const presHash = (pres) => crypto.createHash('sha256').update(pres.payloadStr + '|' + pres.sig).digest('hex')
+
+function issueChallenge(now = Date.now()) {
+  return { nonce: crypto.randomBytes(16).toString('hex'), expiry: now + CHALLENGE_TTL_MS, used: false }
+}
+
+function holderRespond(holderPriv, ch, pres) {
+  const msg = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  return { msg, sig: crypto.sign(null, Buffer.from(msg), holderPriv).toString('base64') }
+}
+
+// Verifier P. Consumes the nonce on every attempt, pass or fail.
+function verifyFresh(holderPub, holder, ch, pres, response, now = Date.now()) {
+  if (ch.used) return { ok: false, reason: 'replay: nonce already used' }
+  ch.used = true
+  if (now > ch.expiry) return { ok: false, reason: 'challenge expired' }
+  const expected = JSON.stringify({ nonce: ch.nonce, expiry: ch.expiry, presentation: presHash(pres) })
+  if (response.msg !== expected) return { ok: false, reason: 'holder response does not match challenge' }
+  if (!crypto.verify(null, Buffer.from(response.msg), holderPub, Buffer.from(response.sig, 'base64'))) {
+    return { ok: false, reason: 'bad holder signature' }
+  }
+  return verifyPresentation(holder, pres)
 }
 
 // ---- Ledger helpers ----
@@ -143,8 +172,12 @@ async function main() {
 
   // New attestation for H2 with a passing claim. Verified before any ledger write.
   const att = attest(H2.address, { over18: true, country: 'IT', docNumber: 'XX333333' })
-  const r = verifyPresentation(H2.address, present(att, ['over18', 'country']))
+  const ch = issueChallenge()
+  const pres = present(att, ['over18', 'country'])
+  const r = verifyFresh(holder2Pub, H2.address, ch, pres, holderRespond(holder2Priv, ch, pres))
   check('proof: P passes H2 on the new attestation', r.ok === true, r.reason)
+  const reuse = verifyFresh(holder2Pub, H2.address, ch, pres, holderRespond(holder2Priv, ch, pres))
+  check('proof: P rejects reused H2 presentation', reuse.ok === false, reuse.reason)
 
   // Full H2 path.
   await submit(client, { TransactionType: 'CredentialCreate', Account: K.address, Subject: H2.address, CredentialType: CRED_TYPE }, K, 'CredentialCreate (K to H2)')
