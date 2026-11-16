@@ -1,19 +1,26 @@
 # KYC-Gated Real-Estate Share Issuer: Spec v1
 
-Status: draft for review. Nothing is built or run yet.
+Status: Phases 0 to 4 run on testnet. Run folders are in runs/.
 
 ## Goal
 
 A property owner issues fractional shares as an MPT on XRPL.
 - Only KYC-approved holders can hold shares.
 - The issuer can lock or claw back shares for compliance.
-- A holder proves "over 18" and "allowed country" with a selective-disclosure proof. The identity document stays private.
+- A holder proves "over 18" and "allowed country" with signed selective disclosure. The identity document stays private from the verifier's view of unrevealed fields. This is not zero-knowledge. See the Threat note.
+
+## Design rules
+
+- **Question every requirement.** Each step cites its source or its reason. A step that fails the ledger or the docs changes.
+- **Delete before adding.** Remove any part that v1 does not need. Keep the Permissioned Domain and the ZK circuit out of v1.
+- **Verify before claiming.** Each fact in this spec names its source. A claim without a source is marked unverified.
+- **Record failures.** A failed check stays in the run log and in the spec. A gap stays listed until a source closes it.
 
 ## Tracks covered
 
 - **Tokenization:** MPT issuance, fractional holding, payouts.
-- **Cryptography:** Selective-disclosure proof for the KYC check.
-- **XRPL applications:** Credential record, Permissioned Domain (optional, see open items).
+- **Cryptography:** Signed selective disclosure for the KYC check (v1). Zero-knowledge proof is deferred. See Open items.
+- **XRPL applications:** Credential record.
 
 ## Verified facts (2026-11-15)
 
@@ -28,6 +35,7 @@ A property owner issues fractional shares as an MPT on XRPL.
 | Permissioned Domains enabled 2026-02-04 | Known Amendments |
 | Credentials gate DepositPreauth, Permissioned DEX, and Payment `CredentialIDs` | Credentials and Payment docs |
 | **No protocol rule lets a Credential gate MPTokenAuthorize directly** | Docs search, 2026-11-15 |
+| Lock of one holder returns `tecLOCKED` on a payment from that holder. Observed on testnet, Phase 4 run 2026-11-16. | Ledger observation. rippled `include/xrpl/protocol/TER.h` line 369 (`tecLOCKED = 192`). Not listed on xrpl.org (issue XRPLF/xrpl-dev-portal#4070). |
 
 ## Design decision: how the KYC gate works
 
@@ -70,7 +78,7 @@ Done when the real MPT exists with all flags set.
 
 1.1. I creates the MPT. Record the issuance ID.
 1.2. Confirm the flags on the ledger.
-1.3. I issues the first share batch to the issuer account, not to holders.
+1.3. I sends the first share batch to operational account O. O needs a Credential and authorization first, like any holder. The issuer cannot hold its own MPTs.
 
 ## Phase 2: Holder onboarding
 
@@ -117,9 +125,8 @@ Done when the locked balance cannot move and the clawback clears it.
 ## Open items (not verified)
 
 - Whether DepositAuth and CredentialIDs gate MPT payments (v2 only).
-- Whether Permissioned Domains add value in v1. v1 does not use the DEX, so the domain is optional.
-- Whether the selective-disclosure proof library works with our chosen circuit. Not checked.
-- The ledger check of MPT flags on testnet before Phase 1.
+- Whether zero-knowledge proofs are worth their cost for v2. Deferred. Revisit before v2 starts.
+- Whether verifiers may learn the holder address and the revealed claims. Assumed yes in v1.
 - Who issues real KYC in production. The demo uses a mock K.
 
 ## Threat note (draft)
@@ -129,3 +136,8 @@ Done when the locked balance cannot move and the clawback clears it.
 - The issuer is trusted to authorize holders correctly. The ledger does not enforce the gate in v1.
 - The proof verifier P is trusted to check the proof.
 - A lost holder key cannot be recovered.
+- Signed selective disclosure has these known gaps in v1:
+  - **Attestor trust.** The attestor signs `over18: true`. The holder cannot prove it from a birthdate.
+  - **Replay.** The verifier checks no nonce, challenge, or expiry. A captured presentation can be reused. Fix before any multi-verifier run.
+  - **Linkability.** Each presentation carries the same signature and holder address. A verifier can link a holder's visits.
+  - **Leaked shape.** The verifier learns the count of signed claims.
