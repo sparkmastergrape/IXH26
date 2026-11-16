@@ -35,6 +35,7 @@ A property owner issues fractional shares as an MPT on XRPL.
 | Permissioned Domains enabled 2026-02-04 | Known Amendments |
 | Credentials gate DepositPreauth, Permissioned DEX, and Payment `CredentialIDs` | Credentials and Payment docs |
 | **No protocol rule lets a Credential gate MPTokenAuthorize directly** | Docs search, 2026-11-15 |
+| Testnet and Devnet reset on Wednesday, 2026-11-25 | xrpl.org blog, "Upcoming Testnet and Devnet Resets," 2026-11-09 |
 | Lock of one holder returns `tecLOCKED` on a payment from that holder. Observed on testnet, Phase 4 run 2026-11-16. | Ledger observation. rippled `include/xrpl/protocol/TER.h` line 369 (`tecLOCKED = 192`). Not listed on xrpl.org (issue XRPLF/xrpl-dev-portal#4070). |
 
 ## Design decision: how the KYC gate works
@@ -115,12 +116,13 @@ Done when the locked balance cannot move and the clawback clears it.
 | Credential expires | Authorized holder keeps shares, but a new transfer may fail | Re-check Credential expiry before each payout |
 | KYC proof fails | Holder stays unauthorized | Holder sees a failure message. No partial authorization. |
 | Flags wrong at issuance | Permanent. Cannot undo. | Phase 0 test on throwaway issuance |
-| Devnet reset | Wipes issuance | Not affected if we build on testnet. Confirm testnet mirrors mainnet amendments. |
+| Testnet reset on 2026-11-25 | Wipes the issuance and all ledger state | Keep the run folders as the record. Re-run Phases 0 to 4 on the new testnet. |
 
 ## Network
 
 - Build on **testnet** for v1. Testnet amendment status mirrors mainnet (docs). Credentials confirmed live on testnet. MPT status on testnet follows the mainnet status by that rule. Confirm by ledger check before Phase 1.
-- Do not use devnet for v1. It resets on 2026-11-25.
+- Testnet and Devnet reset on Wednesday, 2026-11-25. Source: xrpl.org blog, "Upcoming Testnet and Devnet Resets," published 2026-11-09. The reset is for full-history server stability.
+- Do not use devnet for v1. Devnet also resets on 2026-11-25 and tracks the develop branch.
 
 ## Open items (not verified)
 
