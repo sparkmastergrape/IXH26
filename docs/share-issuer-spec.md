@@ -179,7 +179,7 @@ Pass criteria:
 - Clawback MPT `Amount` format. xrpl.org Clawback Fields (docs search, 2026-11-16) requires `Holder` for MPTs and a non-zero `value`. It does not show the MPT `Amount` shape. The Phase 4 run uses the ledger-accepted format. Confirm against the MPT clawback example page before the reset.
 - Whether zero-knowledge proofs are worth their cost for v2. Deferred. Revisit before v2 starts.
 - Whether verifiers may learn the holder address and the revealed claims. Assumed yes in v1.
-- Who issues real KYC in production. The demo uses a mock K.
+- Who issues real KYC in production. The demo uses a mock K. Owner decision (2026-11-16): v1 meets identity and age checks first (claims `over18` and `country`). Identity provider: Trulioo (role not yet verified against vendor docs). Sanctions screening is a gap: no screening step exists in v1, and it must be added before any real holder. Screening provider: LexisNexis, if required. Add the second provider after v1 works.
 
 ## Threat note (draft)
 
