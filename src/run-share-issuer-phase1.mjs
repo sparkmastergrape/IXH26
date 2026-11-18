@@ -5,7 +5,7 @@
 // Runs 1.1 (create MPT) and 1.2 (confirm flags on the ledger).
 // Step 1.3 is not in this script. It runs in src/run-share-issuer-phase1-3.mjs, to operational account O.
 // An issuer cannot hold its own MPTs (xrpl.org MPT docs, Core Properties). A Payment to the issuer burns the tokens.
-// Supply is MaximumAmount minus OutstandingAmount (xrpl.org MPT docs, Supply Cap).
+// OutstandingAmount is the supply in circulation. MaximumAmount caps it (xrpl.org, Migrating from Trust Line Tokens to MPTs, Amounts and fees).
 
 import fs from 'fs'
 import path from 'path'
@@ -113,11 +113,11 @@ async function main() {
   check('1.2 max amount as set', String(node.MaximumAmount) === MAX_AMOUNT, `MaximumAmount=${node.MaximumAmount}`)
   check('1.2 nothing outstanding yet', String(node.OutstandingAmount ?? '0') === '0', `OutstandingAmount=${node.OutstandingAmount ?? '0'}`)
 
-  // 1.3 not run. See header.
-  log.step13 = 'not run: issuer cannot hold MPTs. Payment to issuer burns. Supply = MaximumAmount minus OutstandingAmount.'
+  // 1.3 is not in this script. See header.
+  log.step13 = 'not in this script: step 1.3 runs in src/run-share-issuer-phase1-3.mjs, to operational account O.'
   log.result = 'PASS'
   save()
-  console.log(`\nRESULT PASS (1.1 and 1.2). 1.3 not run. run dir: ${runDir}`)
+  console.log(`\nRESULT PASS (1.1 and 1.2). 1.3 runs in src/run-share-issuer-phase1-3.mjs. run dir: ${runDir}`)
   await client.disconnect()
 }
 

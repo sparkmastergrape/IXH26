@@ -11,7 +11,19 @@ Chain A, 2026-11-16 08:42 to 08:46 UTC, run step by step with the replay fix. Ev
 - Phase 3.4 (replay check passes, reused presentation rejected): `runs/2026-11-16T08-45-18-069Z-phase3-positive-transfer`
 - Phase 4: `runs/2026-11-16T08-45-55-576Z-phase4-compliance`
 
-This chain ran before the 2026-11-25 reset. Its ledger state will be wiped by that reset.
+Chain B (runner), 2026-11-16 08:51 to 08:55 UTC. Every step passes. Issuance `01554B0089F583DF9A8BAE3055A6085534FFC2AE3A67BB30`. Run folders: `runs/2026-11-16T08-51-56-973Z-phase0-rehearsal` to `runs/2026-11-16T08-55-18-748Z-phase4-compliance`. Ledger check: `runs/2026-11-16T08-55-37-212Z-verify` (PASS).
+
+Chain C (runner), 2026-11-16 10:03 to 10:07 UTC. This is the latest chain. Every step passes. Issuance `01554FECB0CBC1E56B3C34D5AA3E5545ADEA821C355B869C`. A read-only ledger query on 2026-11-18 reads Flags 102, OutstandingAmount 100100, H1 at 0, and H2 at 100. Run folders:
+- Phase 0: `runs/2026-11-16T10-03-47-166Z-phase0-rehearsal`
+- Phase 1: `runs/2026-11-16T10-04-38-911Z-phase1-issuance`
+- Phase 1.3: `runs/2026-11-16T10-04-51-412Z-phase1-3-operational-batch`
+- Phase 2: `runs/2026-11-16T10-05-36-172Z-phase2-onboarding`
+- Phase 3: `runs/2026-11-16T10-06-17-404Z-phase3-transfers`
+- Phase 3.4: `runs/2026-11-16T10-06-38-772Z-phase3-positive-transfer`
+- Phase 4: `runs/2026-11-16T10-06-59-528Z-phase4-compliance`
+- Ledger check: `runs/2026-11-16T10-07-21-410Z-verify` (PASS)
+
+These chains ran before the 2026-11-25 reset. Their ledger state will be wiped by that reset.
 
 Run the full chain with one command: `npm run share-issuer:chain`. It runs Phases 0 to 4 in order, then a read-only ledger check (`npm run share-issuer:verify` runs that check alone on given run folders). It stops at the first failed step.
 
@@ -35,13 +47,14 @@ A property owner issues fractional shares as an MPT on XRPL.
 - **Cryptography:** Signed selective disclosure for the KYC check (v1). Zero-knowledge proof is deferred. See Open items.
 - **XRPL applications:** Credential record.
 
-## Verified facts (2026-11-15 and 2026-11-16)
+## Verified facts (2026-11-15 to 2026-11-18)
 
 | Fact | Source |
 |---|---|
 | Credentials enabled on devnet, testnet, and mainnet | Known Amendments, live ledger check |
 | MPTs enabled 2025-10-01 | Known Amendments |
-| Issuer cannot hold its own MPTs. Tokens sent to the issuer burn, so supply in circulation equals MaximumAmount minus OutstandingAmount | MPT docs, Core Properties and Supply Cap |
+| Issuer cannot hold its own MPTs. Tokens sent to the issuer burn. | MPT docs, Core Properties and Supply Cap |
+| `OutstandingAmount` is the supply in circulation, held by non-issuers. `MaximumAmount` caps it. The amount still open to issue is MaximumAmount minus OutstandingAmount. The earlier wording "supply in circulation equals MaximumAmount minus OutstandingAmount" is superseded. | xrpl.org Migrating from Trust Line Tokens to MPTs, Amounts and fees. xrpl.org Confidential Transfers, Privacy Properties. Docs search excerpts, 2026-11-18. Full pages not opened. Chain C ledger read: holder balances 100000 + 0 + 100 equal OutstandingAmount 100100 (verify.json, PASS). |
 | Flag `tfMPTCanClawback` must be set at issuance | MPTokenIssuanceCreate docs |
 | Flag `tfMPTCanLock` allows lock and unlock | MPTokenIssuanceCreate docs |
 | Flag `tfMPTRequireAuth` enables allow-listing | MPTokenIssuanceCreate docs |
@@ -51,12 +64,13 @@ A property owner issues fractional shares as an MPT on XRPL.
 | **No protocol rule lets a Credential gate MPTokenAuthorize directly** | Docs search, 2026-11-15 |
 | Testnet and Devnet reset on Wednesday, 2026-11-25 | xrpl.org blog, "Upcoming Testnet and Devnet Resets," 2026-11-09 |
 | Lock of one holder returns `tecLOCKED` on a payment from that holder. Observed on testnet, Phase 4 run 2026-11-16. | Ledger observation. rippled `include/xrpl/protocol/TER.h` line 369 (`tecLOCKED = 192`). xrpl.org Send an MPT tutorial, step 5 Caution, lists `tecLOCKED` for a locked sender or receiver (docs search, 2026-11-16; full page not opened). The ConfidentialMPTSend error table also lists it. Earlier note "not listed on xrpl.org" is superseded. Status of XRPLF/xrpl-dev-portal#4070 not checked. |
+| Clawback of an MPT uses `Holder` plus `Amount: { mpt_issuance_id, value }`. The Phase 4 script sends this shape (`src/run-share-issuer-phase4.mjs` lines 119 to 120) and the ledger accepted it in Chains A, B, and C. | xrpl.org Clawback, Fields: `Amount` is a Currency Amount, and MPT clawback needs `Holder`. xrpl.org Basic Data Types, Specifying Currency Amounts, and Currency Formats, MPT Amounts: an MPT amount is `mpt_issuance_id` plus `value`. Docs search excerpts, 2026-11-18. Full pages not opened. The Clawback page example shows a trust line token only. The search found no plain MPT Clawback example. |
 
 ## Design decision: how the KYC gate works
 
 **v1 (verified path):** The issuer does the gate.
-1. Holder submits KYC proof to a KYC issuer account, I_KYC.
-2. I_KYC issues a Credential to the holder.
+1. Holder submits KYC proof to the KYC issuer account, K.
+2. K issues a Credential to the holder.
 3. The issuer checks the Credential on the ledger.
 4. The issuer submits MPTokenAuthorize for that holder.
 
@@ -73,6 +87,7 @@ Build v1 first. Test v2 only after v1 passes.
 
 - **I**: Property issuer. Creates the MPT and sets the rules.
 - **K**: KYC issuer. Issues Credentials. Demo uses a mock KYC account we control.
+- **O**: Operational account. An operator-controlled holder that receives the first share batch (step 1.3). K onboards O like any holder.
 - **H1 to Hn**: Share holders.
 - **P**: Proof verifier. Checks the selective-disclosure proof off-chain.
 
@@ -158,14 +173,24 @@ Pass criteria:
 | Credential expires | Authorized holder keeps shares, but a new transfer may fail | Re-check Credential expiry before each payout |
 | KYC proof fails | Holder stays unauthorized | Holder sees a failure message. No partial authorization. |
 | Flags wrong at issuance | Permanent. Cannot undo. | Phase 0 test on throwaway issuance |
-| Testnet reset on 2026-11-25 | Wipes the issuance and all ledger state | Keep the run folders as the record. Re-run Phases 0 to 4 on the new testnet. |
-| Phase 3 positive run pre-check fails: H1 holds 1050, not 950 (after Phase 4 clawback) | Run stops at pre-check. No transfer. Kept as FAIL in runs/2026-11-16T05-48-31-021Z-phase3-positive-transfer. | Re-create the pre-Phase 4 state on a fresh issuance and run the chain. Passing run: runs/2026-11-16T05-51-56-889Z-phase3-positive-transfer. |
+| Testnet reset on 2026-11-25 | Wipes the issuance and all ledger state. Source: xrpl.org blog, "Upcoming Testnet and Devnet Resets" (https://xrpl.org/blog/2026/testnet-devnet-reset), read via search summary 2026-11-18 | Keep the run folders as the record. Re-run Phases 0 to 4 on the new testnet. |
+| Phase 3 positive run pre-check fails: the check expects H1 to hold 1050, and the ledger reads 0 (after Phase 4 clawback) | Run stops at pre-check. No transfer. Kept as FAIL in runs/2026-11-16T05-48-31-021Z-phase3-positive-transfer. | Re-create the pre-Phase 4 state on a fresh issuance and run the chain. Passing run: runs/2026-11-16T05-51-56-889Z-phase3-positive-transfer. |
 
 ## Network
 
 - Build on **testnet** for v1. Testnet amendment status mirrors mainnet (xrpl.org blog 2026-11-09, Background). Credentials confirmed live on testnet. MPT status on testnet follows the mainnet status by that rule. Confirm by ledger check before Phase 1.
 - Testnet and Devnet reset on Wednesday, 2026-11-25. Source: xrpl.org blog, "Upcoming Testnet and Devnet Resets," published 2026-11-09. The reset is for full-history server stability.
 - Do not use devnet for v1. Devnet also resets on 2026-11-25 and tracks the develop branch (xrpl.org blog 2026-11-09, Background).
+
+## Tools (v1, no numbered step)
+
+These files support the v1 steps. No numbered step names them.
+
+- `src/run-share-issuer-chain.mjs` (`npm run share-issuer:chain`). Runs Phases 0 to 4 in order, then the ledger check.
+- `src/verify-share-issuer-chain.mjs` (`npm run share-issuer:verify`). Read-only ledger check for one chain. Writes `runs/<stamp>-verify/verify.json`.
+- `src/share-issuer-dashboard.mjs` (`npm run share-issuer:dashboard`). Local read-only page on 127.0.0.1. Reads `runs/` only. Makes no ledger calls. Added in commit f37a58f.
+- `package.json`, `package-lock.json`, and `.gitignore`. Project setup. `.gitignore` keeps `runs/` and `node_modules/` out of git.
+- `.claude/agents/share-issuer-drift-checker.md`. Read-only checker that compares the repo to this spec.
 
 ## Other tracked files (not v1)
 
@@ -176,7 +201,6 @@ Pass criteria:
 ## Open items (not verified)
 
 - Whether DepositAuth and CredentialIDs gate MPT payments (v2 only).
-- Clawback MPT `Amount` format. xrpl.org Clawback Fields (docs search, 2026-11-16) requires `Holder` for MPTs and a non-zero `value`. It does not show the MPT `Amount` shape. The Phase 4 run uses the ledger-accepted format. Confirm against the MPT clawback example page before the reset.
 - Whether zero-knowledge proofs are worth their cost for v2. Deferred. Revisit before v2 starts.
 - Whether verifiers may learn the holder address and the revealed claims. Assumed yes in v1.
 - Who issues real KYC in production. The demo uses a mock K. Owner decision (2026-11-16): v1 meets identity and age checks first (claims `over18` and `country`). Identity provider: Trulioo (role not yet verified against vendor docs). Sanctions screening is a gap: no screening step exists in v1, and it must be added before any real holder. Screening provider: LexisNexis, if required. Add the second provider after v1 works.
@@ -190,6 +214,6 @@ Pass criteria:
 - A lost holder key cannot be recovered. Source: none yet (unverified).
 - Signed selective disclosure has these known gaps in v1:
   - **Attestor trust.** Decision 2026-11-16: accepted as a v1 trust assumption. The attestor signs `over18: true`. The holder cannot prove it from a birthdate, and the verifier trusts the attestor's claim. Rejected for v1: the verifier sees the birthdate (leaks the exact date). Deferred: a zero-knowledge over18 proof (v2). Revisit if no regulated KYC provider signs the age claim.
-  - **Replay.** Design approved 2026-11-16. The verifier issues a nonce and an expiry (5 minutes). The holder signs both, with a hash of the presentation, using a holder Ed25519 key. The verifier accepts each nonce once. Phase 2 and Phase 3.4 scripts implement it. The offline self-test passes (5 replay cases, including a reused presentation). Both 2026-11-16 chains ran the replay checks on testnet. Chain A: Phase 2 at 08:44 UTC, Phase 3.4 at 08:45. Chain B (runner): Phase 2 at 08:53 UTC, Phase 3.4 at 08:54. It must run again after the 2026-11-25 reset. Fix before any multi-verifier run.
+  - **Replay.** Design approved 2026-11-16. The verifier issues a nonce and an expiry (5 minutes). The challenge names the verifier. The holder signs the nonce, the expiry, and the verifier name, with a hash of the presentation, using a holder Ed25519 key. The verifier accepts each nonce once. The verifier rejects a challenge that names another verifier. The verifier also rejects a holder key that the attestation does not name (commit b1a4a5b). Phase 2 and Phase 3.4 scripts implement it. The offline self-test in the current code has 7 replay cases, including a reused presentation, a substitute key, and a challenge for another verifier. The run logs of Chains A and B list 5 replay cases. The run log of Chain C lists 7. Three 2026-11-16 chains ran the replay checks on testnet. Chain A: Phase 2 at 08:44 UTC, Phase 3.4 at 08:45. Chain B (runner): Phase 2 at 08:53 UTC, Phase 3.4 at 08:54. Chain C (runner): Phase 2 at 10:05 UTC, Phase 3.4 at 10:06. It must run again after the 2026-11-25 reset. Fix before any multi-verifier run.
   - **Linkability.** Decision 2026-11-16: accepted for v1. Each presentation carries the same signature and holder address. A verifier can link a holder's visits through the address. The address is already public on the ledger with its balance and transfers. Rejected for v1: fresh attestation per presentation (does not stop address linkage, needs the attestor online per use). Rejected: a pseudonymous subject per verifier (breaks the credential and MPT authorization on the holder account).
   - **Leaked shape.** Decision 2026-11-16: accepted for v1. The verifier learns the count of signed claims. Every holder signs the same three claims, so the count identifies no one. It leaks only if the claim set varies between holders. Revisit if production claim sets vary. Fix then: pad every attestation to a fixed digest count.

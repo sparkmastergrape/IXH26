@@ -24,7 +24,7 @@ const LSF_ACCEPTED = 0x00010000
 
 const REHEARSAL = process.argv.includes('--rehearsal')
 if (!REHEARSAL) {
-  console.error('Only --rehearsal (Phase 0) is implemented. Phase 1 needs a go-ahead.')
+  console.error('This script runs Phase 0 only. Use --rehearsal. Phases 1 to 4 have their own scripts in src/.')
   process.exit(3)
 }
 const MODE = 'phase0-rehearsal'

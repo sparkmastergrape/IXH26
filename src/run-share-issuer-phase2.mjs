@@ -3,7 +3,7 @@
 //   node src/run-share-issuer-phase2.mjs <phase1-run-dir> <phase1-3-run-dir>
 // Testnet only. Seeds and keys go to runs/ only. Nothing is committed.
 //
-// PROOF CHOICE (decided here, not in the spec):
+// PROOF CHOICE (per spec, Tracks covered, Cryptography):
 // Signed selective disclosure with Ed25519 (node:crypto). No circuit, no trusted setup.
 // Attestor A signs salted digests of holder claims. The holder reveals only the claims the policy needs.
 // The verifier P checks the signature, the holder binding, the disclosed digests, and the policy.
